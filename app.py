@@ -164,6 +164,38 @@ def upload_arquivos():
 # Cria o banco ao iniciar
 with app.app_context():
     db.create_all()
-
+@app.route('/salvar_medicao', methods=['POST'])
+def salvar_medicao():
+    # 1. Pega a data de hoje (ou poderia ser um campo de data na tela)
+    data_hoje = datetime.today().date()
+    
+    # 2. Varre todos os campos que vieram do formulário
+    formulario = request.form
+    itens_salvos = 0
+    
+    for key, valor in formulario.items():
+        # Procura campos que começam com 'item_' (ex: item_12)
+        if key.startswith("item_") and valor:
+            try:
+                # O nome do campo é 'item_ID_mes'. Vamos pegar só o ID.
+                # Ex: 'item_15_mes' -> splita em ['item', '15', 'mes'] -> pega o '15'
+                parts = key.split('_')
+                if len(parts) >= 2:
+                    item_id = int(parts[1])
+                    qtd_digitada = float(str(valor).replace('.', '').replace(',', '.'))
+                    
+                    if qtd_digitada != 0:
+                        nova_medicao = Medicao(
+                            data_referencia=data_hoje,
+                            item_id=item_id,
+                            qtd_executada_mes=qtd_digitada
+                        )
+                        db.session.add(nova_medicao)
+                        itens_salvos += 1
+            except ValueError:
+                continue # Ignora se digitou algo que não é numero
+    
+    db.session.commit()
+    return f"<h1>Sucesso!</h1><p>{itens_salvos} itens foram medidos e salvos.</p><a href='/medicao'>Voltar</a>"
 if __name__ == '__main__':
     app.run(debug=True)
