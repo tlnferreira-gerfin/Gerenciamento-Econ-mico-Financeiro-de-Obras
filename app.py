@@ -70,22 +70,16 @@ def tela_medicao():
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_arquivos():
-    # Função auxiliar para limpar dinheiro (R$, espaços, pontos e vírgulas)
+    
+    # Função auxiliar para limpar números (R$, pontos, vírgulas)
     def limpar_moeda(valor):
         if pd.isna(valor): return 0.0
-        
-        # Converte para texto e remove R$ e espaços vazios
         s = str(valor).replace('R$', '').strip()
-        
-        # Se estiver vazio após limpar, retorna 0
         if not s: return 0.0
-        
-        # Lógica para números brasileiros (Ex: 1.250,50 ou 830,00)
-        # Se tiver vírgula, assumimos que é decimal
+        # Se tiver vírgula, assume formato BR (1.000,00)
         if ',' in s:
-            s = s.replace('.', '')  # Remove ponto de milhar (1.250 -> 1250)
-            s = s.replace(',', '.') # Troca vírgula por ponto (1250,50 -> 1250.50)
-        
+            s = s.replace('.', '')  # Remove ponto de milhar
+            s = s.replace(',', '.') # Troca vírgula por ponto decimal
         try:
             return float(s)
         except ValueError:
@@ -97,21 +91,47 @@ def upload_arquivos():
         if arquivo_seo:
             ItemSEO.query.delete()
             try:
-                df = pd.read_csv(arquivo_seo, sep=None, engine='python', encoding='latin1')
-                for _, row in df.iterrows():
-                    desc = str(row.get('Descrição', ''))
-                    if pd.isna(desc) or desc.strip() == 'Descrição' or desc.strip() == '':
-                        continue
+                # Lê o arquivo "cru", sem cabeçalho, para não se perder
+                df = pd.read_csv(arquivo_seo, sep=None, engine='python', encoding='latin1', header=None)
+                
+                # Procura a linha onde começa a tabela (procura a palavra "Item" na primeira coluna)
+                linha_inicio = -1
+                for i, row in df.iterrows():
+                    primeira_celula = str(row[0]).strip()
+                    if 'Item' in primeira_celula:
+                        linha_inicio = i
+                        break
+                
+                if linha_inicio != -1:
+                    # Começa a ler 2 linhas DEPOIS do cabeçalho (pula a linha de Unid/Quant que fica embaixo)
+                    for i in range(linha_inicio + 2, len(df)):
+                        row = df.iloc[i]
                         
-                    novo_item = ItemSEO(
-                        codigo=str(row.get('Código', '')),
-                        descricao=desc,
-                        unidade=str(row.get('Unid.', 'un')),
-                        # Usa a nova função de limpeza aqui
-                        preco_unitario=limpar_moeda(row.get('Unit.', 0)),
-                        qtd_contrato=limpar_moeda(row.get('Quant.', 0))
-                    )
-                    db.session.add(novo_item)
+                        # Mapeamento fixo das colunas (Baseado na sua planilha)
+                        # Col 0: Item (1.1.1) | Col 2: Código | Col 3: Descrição | Col 4: Unid 
+                        # Col 5: Quantidade | Col 6: Preço Unitário
+                        
+                        desc = str(row[3])
+                        
+                        # Pula linhas vazias ou linhas de totais
+                        if pd.isna(desc) or desc == 'nan' or desc.strip() == '':
+                            continue
+
+                        # Tenta pegar o preço. Se não tiver preço, assume 0 (pode ser título de seção)
+                        preco = limpar_moeda(row[6])
+                        quant = limpar_moeda(row[5])
+                        
+                        novo_item = ItemSEO(
+                            codigo=str(row[2]), # Coluna C (Código)
+                            descricao=desc,     # Coluna D (Descrição)
+                            unidade=str(row[4]), # Coluna E (Unidade)
+                            preco_unitario=preco, # Coluna G (Unitário - verifique se na sua é G mesmo)
+                            qtd_contrato=quant    # Coluna F (Quantidade)
+                        )
+                        db.session.add(novo_item)
+                else:
+                    return "Erro: Não encontrei a coluna 'Item' na planilha SEO."
+                    
             except Exception as e:
                 return f"Erro ao ler SEO: {str(e)}"
 
@@ -120,14 +140,14 @@ def upload_arquivos():
         if arquivo_gerfin:
             Financeiro.query.delete()
             try:
+                # Mantém a leitura por nome para o GERFIN, que parece estar correto
                 df_fin = pd.read_csv(arquivo_gerfin, sep=None, engine='python', encoding='latin1')
                 for _, row in df_fin.iterrows():
-                    # Pula linha se não tiver valor
-                    raw_val = row.get('Valor adotado GERFIN')
-                    if pd.isna(raw_val): continue
+                    val = row.get('Valor adotado GERFIN')
+                    if pd.isna(val): continue
                     
-                    val_limpo = limpar_moeda(raw_val)
-                    if val_limpo == 0: continue
+                    val_limpo = limpar_moeda(val)
+                    if val_limpo == 0: continue # Pula valores zerados
 
                     novo_fin = Financeiro(
                         fornecedor=str(row.get('Nome', 'Fornecedor')),
@@ -140,9 +160,9 @@ def upload_arquivos():
                 return f"Erro ao ler GERFIN: {str(e)}"
 
         db.session.commit()
-        return "<h1>Dados Importados com Sucesso!</h1><a href='/medicao'>Ver Tabela</a>"
+        return "<h1>Dados Importados com Sucesso!</h1><p>Agora a tabela deve estar completa.</p><a href='/medicao'>Ver Medição</a>"
 
-    # HTML da página de upload
+    # HTML (Igual ao anterior)
     return """
     <div style="font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 10px;">
         <h2>📂 Importação de Dados</h2>
@@ -162,7 +182,6 @@ def upload_arquivos():
         </form>
     </div>
     """
-
 # Cria o banco ao iniciar
 with app.app_context():
     db.create_all()
