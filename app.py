@@ -75,13 +75,11 @@ def upload_arquivos():
             # Limpa o banco antigo para não duplicar
             ItemSEO.query.delete()
             try:
-                # Tenta ler o CSV (testando separadores comuns)
-                df = pd.read_csv(arquivo_seo, sep=None, engine='python')
+                # CORREÇÃO AQUI: Adicionado encoding='latin1' para ler acentos do Excel
+                df = pd.read_csv(arquivo_seo, sep=None, engine='python', encoding='latin1')
                 
-                # Procura as colunas certas (ajuste aqui se os nomes mudarem)
-                # Assumindo que sua planilha tem colunas: 'Código', 'Descrição', 'Unid.', 'Unit.', 'Quant.'
+                # Procura as colunas certas
                 for _, row in df.iterrows():
-                    # Pula linhas vazias ou cabeçalhos repetidos
                     if pd.isna(row.get('Descrição')) or row.get('Descrição') == 'Descrição':
                         continue
                         
@@ -89,7 +87,6 @@ def upload_arquivos():
                         codigo=str(row.get('Código', '')),
                         descricao=str(row.get('Descrição', 'Sem Nome')),
                         unidade=str(row.get('Unid.', 'un')),
-                        # Tratamento para limpar simbolos de moeda R$ ou pontos
                         preco_unitario=float(str(row.get('Unit.', 0)).replace('R$', '').replace('.', '').replace(',', '.') or 0),
                         qtd_contrato=float(str(row.get('Quant.', 0)).replace('.', '').replace(',', '.') or 0)
                     )
@@ -102,16 +99,16 @@ def upload_arquivos():
         if arquivo_gerfin:
             Financeiro.query.delete()
             try:
-                df_fin = pd.read_csv(arquivo_gerfin, sep=None, engine='python')
+                # CORREÇÃO AQUI: Adicionado encoding='latin1' também
+                df_fin = pd.read_csv(arquivo_gerfin, sep=None, engine='python', encoding='latin1')
+                
                 for _, row in df_fin.iterrows():
-                    # Ajuste os nomes das colunas conforme seu CSV real
                     if pd.isna(row.get('Valor adotado GERFIN')): continue
                     
                     novo_fin = Financeiro(
                         fornecedor=str(row.get('Nome', 'Fornecedor')),
                         categoria=str(row.get('Categoria', 'Geral')),
                         valor=float(str(row.get('Valor adotado GERFIN', 0)).replace('.', '').replace(',', '.') or 0),
-                        # Tenta converter data, se falhar usa hoje
                         data_pagamento=pd.to_datetime(row.get('Data de pagamento'), dayfirst=True, errors='coerce')
                     )
                     db.session.add(novo_fin)
@@ -121,7 +118,7 @@ def upload_arquivos():
         db.session.commit()
         return "<h1>Dados Importados com Sucesso!</h1><a href='/medicao'>Ver Tabela</a>"
 
-    # HTML Simples para a página de Upload (sem precisar criar arquivo novo)
+    # HTML da página de upload (O resto continua igual)
     return """
     <div style="font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 10px;">
         <h2>📂 Importação de Dados</h2>
