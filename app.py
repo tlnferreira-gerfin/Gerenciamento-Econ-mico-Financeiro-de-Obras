@@ -1,53 +1,62 @@
 import os
-from flask import Flask, render_template, request, redirect
+import pandas as pd
+from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Configuração do Banco de Dados (Pega a senha da nuvem ou usa local para teste)
+# Configuração do Banco de Dados
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///obra.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# --- MODELOS DO BANCO DE DADOS (Tabelas) ---
+# --- MODELOS DO BANCO DE DADOS ---
 
 class ItemSEO(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(50))
     descricao = db.Column(db.String(255))
     unidade = db.Column(db.String(10))
-    qtd_contrato = db.Column(db.Float)
     preco_unitario = db.Column(db.Float)
+    qtd_contrato = db.Column(db.Float)
 
 class Medicao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    data_referencia = db.Column(db.Date) # Ex: 01/08/2025
+    data_referencia = db.Column(db.Date)
     item_id = db.Column(db.Integer, db.ForeignKey('item_seo.id'))
     qtd_executada_mes = db.Column(db.Float)
-    
-    # Relacionamento para facilitar consultas
     item = db.relationship('ItemSEO', backref='medicoes')
 
-# --- ROTAS DO SITE (Páginas) ---
+class Financeiro(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    data_pagamento = db.Column(db.Date)
+    fornecedor = db.Column(db.String(255))
+    categoria = db.Column(db.String(100))
+    valor = db.Column(db.Float)
+
+# --- ROTAS DO SITE ---
 
 @app.route('/')
 def index():
-    # Página inicial (Dashboard)
-    return "<h1>Sistema de Gestão de Obras</h1><a href='/medicao'>Ir para Medição</a>"
+    return """
+    <div style="text-align: center; margin-top: 50px; font-family: sans-serif;">
+        <h1>🏗️ Sistema de Gestão de Obras</h1>
+        <p>Bem-vindo ao painel de controle.</p>
+        <br>
+        <a href="/medicao" style="background: #0d6efd; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Ir para Medição</a>
+        <br><br>
+        <a href="/upload" style="color: #666;">📂 Configuração e Upload de Dados</a>
+    </div>
+    """
 
-@app.route('/medicao', methods=['GET'])
+@app.route('/medicao')
 def tela_medicao():
-    # Busca todos os itens do contrato
     itens = ItemSEO.query.all()
-    
     lista_para_tela = []
-    
-    # Para cada item, calcula o acumulado até hoje
     for item in itens:
         total_executado = sum([m.qtd_executada_mes for m in item.medicoes])
-        
         lista_para_tela.append({
             'id': item.id,
             'descricao': item.descricao,
@@ -55,35 +64,85 @@ def tela_medicao():
             'contrato': item.qtd_contrato,
             'acumulado': total_executado
         })
-    
-    # Renderiza o HTML (aquele que desenhamos antes) passando os dados do banco
     return render_template('medicao.html', itens=lista_para_tela)
 
-@app.route('/salvar_medicao', methods=['POST'])
-def salvar():
-    data_hoje = datetime.today().date()
-    
-    # Pega os dados enviados pelo formulário HTML
-    formulario = request.form
-    
-    for key, valor in formulario.items():
-        if key.startswith("qtd_mes_") and valor:
-            # Extrai o ID do item do nome do campo (ex: qtd_mes_12)
-            item_id = int(key.split('_')[2])
-            qtd = float(valor)
-            
-            if qtd > 0:
-                nova_medicao = Medicao(
-                    data_referencia=data_hoje,
-                    item_id=item_id,
-                    qtd_executada_mes=qtd
-                )
-                db.session.add(nova_medicao)
-    
-    db.session.commit()
-    return "<h1>Medição Salva com Sucesso!</h1><a href='/medicao'>Voltar</a>"
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_arquivos():
+    if request.method == 'POST':
+        # 1. Processar Arquivo SEO (Orçamento)
+        arquivo_seo = request.files.get('arquivo_seo')
+        if arquivo_seo:
+            # Limpa o banco antigo para não duplicar
+            ItemSEO.query.delete()
+            try:
+                # Tenta ler o CSV (testando separadores comuns)
+                df = pd.read_csv(arquivo_seo, sep=None, engine='python')
+                
+                # Procura as colunas certas (ajuste aqui se os nomes mudarem)
+                # Assumindo que sua planilha tem colunas: 'Código', 'Descrição', 'Unid.', 'Unit.', 'Quant.'
+                for _, row in df.iterrows():
+                    # Pula linhas vazias ou cabeçalhos repetidos
+                    if pd.isna(row.get('Descrição')) or row.get('Descrição') == 'Descrição':
+                        continue
+                        
+                    novo_item = ItemSEO(
+                        codigo=str(row.get('Código', '')),
+                        descricao=str(row.get('Descrição', 'Sem Nome')),
+                        unidade=str(row.get('Unid.', 'un')),
+                        # Tratamento para limpar simbolos de moeda R$ ou pontos
+                        preco_unitario=float(str(row.get('Unit.', 0)).replace('R$', '').replace('.', '').replace(',', '.') or 0),
+                        qtd_contrato=float(str(row.get('Quant.', 0)).replace('.', '').replace(',', '.') or 0)
+                    )
+                    db.session.add(novo_item)
+            except Exception as e:
+                return f"Erro ao ler SEO: {str(e)}"
 
-# Cria o banco de dados se não existir (apenas na primeira vez)
+        # 2. Processar Arquivo GERFIN (Financeiro)
+        arquivo_gerfin = request.files.get('arquivo_gerfin')
+        if arquivo_gerfin:
+            Financeiro.query.delete()
+            try:
+                df_fin = pd.read_csv(arquivo_gerfin, sep=None, engine='python')
+                for _, row in df_fin.iterrows():
+                    # Ajuste os nomes das colunas conforme seu CSV real
+                    if pd.isna(row.get('Valor adotado GERFIN')): continue
+                    
+                    novo_fin = Financeiro(
+                        fornecedor=str(row.get('Nome', 'Fornecedor')),
+                        categoria=str(row.get('Categoria', 'Geral')),
+                        valor=float(str(row.get('Valor adotado GERFIN', 0)).replace('.', '').replace(',', '.') or 0),
+                        # Tenta converter data, se falhar usa hoje
+                        data_pagamento=pd.to_datetime(row.get('Data de pagamento'), dayfirst=True, errors='coerce')
+                    )
+                    db.session.add(novo_fin)
+            except Exception as e:
+                return f"Erro ao ler GERFIN: {str(e)}"
+
+        db.session.commit()
+        return "<h1>Dados Importados com Sucesso!</h1><a href='/medicao'>Ver Tabela</a>"
+
+    # HTML Simples para a página de Upload (sem precisar criar arquivo novo)
+    return """
+    <div style="font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 10px;">
+        <h2>📂 Importação de Dados</h2>
+        <p>Selecione seus arquivos CSV para preencher o sistema.</p>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div style="margin-bottom: 20px;">
+                <label><strong>1. Arquivo SEO (Orçamento):</strong></label><br>
+                <input type="file" name="arquivo_seo" accept=".csv">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label><strong>2. Arquivo GERFIN (Financeiro):</strong></label><br>
+                <input type="file" name="arquivo_gerfin" accept=".csv">
+            </div>
+            <button type="submit" style="background: #198754; color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 16px;">
+                🚀 Enviar e Processar
+            </button>
+        </form>
+    </div>
+    """
+
+# Cria o banco ao iniciar
 with app.app_context():
     db.create_all()
 
