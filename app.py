@@ -197,5 +197,77 @@ def salvar_medicao():
     
     db.session.commit()
     return f"<h1>Sucesso!</h1><p>{itens_salvos} itens foram medidos e salvos.</p><a href='/medicao'>Voltar</a>"
+@app.route('/dashboard')
+def dashboard():
+    # 1. Busca dados brutos do banco
+    # Pega medições e multiplica pelo preço unitário do item (Valor Agregado)
+    medicoes = db.session.query(
+        Medicao.data_referencia, 
+        db.func.sum(Medicao.qtd_executada_mes * ItemSEO.preco_unitario)
+    ).join(ItemSEO).group_by(Medicao.data_referencia).all()
+
+    # Pega gastos do financeiro agrupado por data
+    gastos = db.session.query(
+        Financeiro.data_pagamento, 
+        db.func.sum(Financeiro.valor)
+    ).group_by(Financeiro.data_pagamento).all()
+
+    # 2. Organiza em Dataframes (Tabelas Virtuais) para facilitar a soma por mês
+    df_prod = pd.DataFrame(medicoes, columns=['Data', 'Valor']) if medicoes else pd.DataFrame(columns=['Data', 'Valor'])
+    df_gasto = pd.DataFrame(gastos, columns=['Data', 'Valor']) if gastos else pd.DataFrame(columns=['Data', 'Valor'])
+
+    # Garante que as datas são datas mesmo
+    if not df_prod.empty: df_prod['Data'] = pd.to_datetime(df_prod['Data'])
+    if not df_gasto.empty: df_gasto['Data'] = pd.to_datetime(df_gasto['Data'])
+
+    # Agrupa tudo por Mês (Ano-Mês) para alinhar os dois gráficos
+    # Ex: Tudo de 01/08 a 31/08 vira "2025-08"
+    df_prod['Mes'] = df_prod['Data'].dt.to_period('M').astype(str) if not df_prod.empty else []
+    df_gasto['Mes'] = df_gasto['Data'].dt.to_period('M').astype(str) if not df_gasto.empty else []
+
+    # Cria uma lista única de meses que existem no sistema
+    todos_meses = sorted(list(set(df_prod['Mes'].unique().tolist() + df_gasto['Mes'].unique().tolist())))
+
+    # Listas finais para o gráfico
+    lista_prod_mes = []
+    lista_gasto_mes = []
+    
+    prod_acumulado = 0
+    gasto_acumulado = 0
+    lista_prod_acum = []
+    lista_gasto_acum = []
+
+    for mes in todos_meses:
+        # Soma do Mês
+        v_prod = df_prod[df_prod['Mes'] == mes]['Valor'].sum()
+        v_gasto = df_gasto[df_gasto['Mes'] == mes]['Valor'].sum() # GERFIN já vem negativo? Se sim, multiplicar por -1
+        
+        # Ajuste: Se no seu CSV o gasto é negativo, remova o abs(). Se for positivo, deixe como está.
+        # Assumindo que gasto entra como positivo para comparar no gráfico:
+        v_gasto = abs(v_gasto) 
+
+        lista_prod_mes.append(v_prod)
+        lista_gasto_mes.append(v_gasto)
+
+        # Soma Acumulada
+        prod_acumulado += v_prod
+        gasto_acumulado += v_gasto
+        lista_prod_acum.append(prod_acumulado)
+        lista_gasto_acum.append(gasto_acumulado)
+
+    # Totais para os Cards
+    total_prod = f"{prod_acumulado:,.2f}"
+    total_gasto = f"{gasto_acumulado:,.2f}"
+    saldo_final = f"{(prod_acumulado - gasto_acumulado):,.2f}"
+
+    return render_template('dashboard.html', 
+                           labels=todos_meses,
+                           prod_mes=lista_prod_mes,
+                           gasto_mes=lista_gasto_mes,
+                           prod_acum=lista_prod_acum,
+                           gasto_acum=lista_gasto_acum,
+                           total_produzido=total_prod,
+                           total_gasto=total_gasto,
+                           saldo=saldo_final)
 if __name__ == '__main__':
     app.run(debug=True)
