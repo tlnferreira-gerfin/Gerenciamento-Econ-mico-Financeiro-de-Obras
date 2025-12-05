@@ -47,8 +47,8 @@ def index():
         <br>
         <a href="/medicao" style="background: #0d6efd; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Ir para Medição</a>
         <br><br>
-        <a href="/upload" style="color: #666;">📂 Configuração e Upload de Dados</a>
-        <br>
+        <a href="/upload" style="background: #6610f2;">📂 Configuração e Upload de Dados</a>
+        <br><br>
         <a href="/dashboard" style="background: #6610f2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">📊 Ver Dashboard</a>
     </div>
     """
