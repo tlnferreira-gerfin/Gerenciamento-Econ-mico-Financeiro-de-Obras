@@ -68,27 +68,46 @@ def tela_medicao():
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_arquivos():
+    # Função auxiliar para limpar dinheiro (R$, espaços, pontos e vírgulas)
+    def limpar_moeda(valor):
+        if pd.isna(valor): return 0.0
+        
+        # Converte para texto e remove R$ e espaços vazios
+        s = str(valor).replace('R$', '').strip()
+        
+        # Se estiver vazio após limpar, retorna 0
+        if not s: return 0.0
+        
+        # Lógica para números brasileiros (Ex: 1.250,50 ou 830,00)
+        # Se tiver vírgula, assumimos que é decimal
+        if ',' in s:
+            s = s.replace('.', '')  # Remove ponto de milhar (1.250 -> 1250)
+            s = s.replace(',', '.') # Troca vírgula por ponto (1250,50 -> 1250.50)
+        
+        try:
+            return float(s)
+        except ValueError:
+            return 0.0
+
     if request.method == 'POST':
         # 1. Processar Arquivo SEO (Orçamento)
         arquivo_seo = request.files.get('arquivo_seo')
         if arquivo_seo:
-            # Limpa o banco antigo para não duplicar
             ItemSEO.query.delete()
             try:
-                # CORREÇÃO AQUI: Adicionado encoding='latin1' para ler acentos do Excel
                 df = pd.read_csv(arquivo_seo, sep=None, engine='python', encoding='latin1')
-                
-                # Procura as colunas certas
                 for _, row in df.iterrows():
-                    if pd.isna(row.get('Descrição')) or row.get('Descrição') == 'Descrição':
+                    desc = str(row.get('Descrição', ''))
+                    if pd.isna(desc) or desc.strip() == 'Descrição' or desc.strip() == '':
                         continue
                         
                     novo_item = ItemSEO(
                         codigo=str(row.get('Código', '')),
-                        descricao=str(row.get('Descrição', 'Sem Nome')),
+                        descricao=desc,
                         unidade=str(row.get('Unid.', 'un')),
-                        preco_unitario=float(str(row.get('Unit.', 0)).replace('R$', '').replace('.', '').replace(',', '.') or 0),
-                        qtd_contrato=float(str(row.get('Quant.', 0)).replace('.', '').replace(',', '.') or 0)
+                        # Usa a nova função de limpeza aqui
+                        preco_unitario=limpar_moeda(row.get('Unit.', 0)),
+                        qtd_contrato=limpar_moeda(row.get('Quant.', 0))
                     )
                     db.session.add(novo_item)
             except Exception as e:
@@ -99,16 +118,19 @@ def upload_arquivos():
         if arquivo_gerfin:
             Financeiro.query.delete()
             try:
-                # CORREÇÃO AQUI: Adicionado encoding='latin1' também
                 df_fin = pd.read_csv(arquivo_gerfin, sep=None, engine='python', encoding='latin1')
-                
                 for _, row in df_fin.iterrows():
-                    if pd.isna(row.get('Valor adotado GERFIN')): continue
+                    # Pula linha se não tiver valor
+                    raw_val = row.get('Valor adotado GERFIN')
+                    if pd.isna(raw_val): continue
                     
+                    val_limpo = limpar_moeda(raw_val)
+                    if val_limpo == 0: continue
+
                     novo_fin = Financeiro(
                         fornecedor=str(row.get('Nome', 'Fornecedor')),
                         categoria=str(row.get('Categoria', 'Geral')),
-                        valor=float(str(row.get('Valor adotado GERFIN', 0)).replace('.', '').replace(',', '.') or 0),
+                        valor=val_limpo,
                         data_pagamento=pd.to_datetime(row.get('Data de pagamento'), dayfirst=True, errors='coerce')
                     )
                     db.session.add(novo_fin)
@@ -118,7 +140,7 @@ def upload_arquivos():
         db.session.commit()
         return "<h1>Dados Importados com Sucesso!</h1><a href='/medicao'>Ver Tabela</a>"
 
-    # HTML da página de upload (O resto continua igual)
+    # HTML da página de upload
     return """
     <div style="font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #ccc; border-radius: 10px;">
         <h2>📂 Importação de Dados</h2>
