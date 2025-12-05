@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema de Gestão de Obras - Medição Mensal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .valor-acumulado { background-color: #e9ecef; color: #6c757d; } /* Cinza para indicar que não edita */
+        .input-mes { border-color: #0d6efd; font-weight: bold; } /* Azul para destacar onde digita */
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h4>🚧 Medição Física - Agosto 2025</h4>
+            <small>Obra: Ginásio Poliesportivo Alfredo Barreto</small>
+        </div>
+        
+        <div class="card-body">
+            <form action="/salvar_medicao" method="POST">
+                
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered align-middle">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 40%">Descrição do Serviço</th>
+                                <th style="width: 10%">Unid.</th>
+                                <th style="width: 15%">Acumulado Anterior<br><small>(Travado)</small></th>
+                                <th style="width: 15%">Executado no Mês<br><small>(Digite Aqui)</small></th>
+                                <th style="width: 20%">Novo Acumulado<br><small>(Automático)</small></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>12.41 - Eletroduto PVC Rígido 1"</strong><br><small class="text-muted">Total Contrato: 398,32 m</small></td>
+                                <td class="text-center">M</td>
+                                
+                                <td><input type="number" class="form-control valor-acumulado" value="150.00" readonly></td>
+                                
+                                <td><input type="number" class="form-control input-mes" name="item_1241_mes" placeholder="0.00"></td>
+                                
+                                <td><span id="novo_acum_1241">150.00</span></td>
+                            </tr>
+
+                            <tr>
+                                <td><strong>13.01 - Pintura Acrílica</strong><br><small class="text-muted">Total Contrato: 1.200 m²</small></td>
+                                <td class="text-center">M²</td>
+                                <td><input type="number" class="form-control valor-acumulado" value="500.00" readonly></td>
+                                <td><input type="number" class="form-control input-mes" name="item_1301_mes" placeholder="0.00"></td>
+                                <td><span id="novo_acum_1301">500.00</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                    <button type="button" class="btn btn-secondary me-md-2">Cancelar</button>
+                    <button type="submit" class="btn btn-success btn-lg">💾 Salvar Fechamento do Mês</button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
