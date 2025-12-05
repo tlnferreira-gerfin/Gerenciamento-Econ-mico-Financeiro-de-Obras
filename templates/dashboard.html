@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Gerencial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>📊 Painel de Controle (Dashboard)</h2>
+        <a href="/" class="btn btn-outline-secondary">Voltar ao Menu</a>
+    </div>
+
+    <div class="row mb-4 text-center">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body">
+                    <h5 class="text-primary">Total Produzido (Receita)</h5>
+                    <h3>R$ <span id="kpi_produzido">{{ total_produzido }}</span></h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-danger">
+                <div class="card-body">
+                    <h5 class="text-danger">Total Gasto (Custo)</h5>
+                    <h3>R$ <span id="kpi_gasto">{{ total_gasto }}</span></h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-body">
+                    <h5 class="text-success">Saldo (Lucro/Prejuízo)</h5>
+                    <h3>R$ <span id="kpi_saldo">{{ saldo }}</span></h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white">Curva S - Físico x Financeiro (Acumulado)</div>
+                <div class="card-body">
+                    <canvas id="chartCurvaS"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header bg-secondary text-white">Desempenho Mensal (Mês a Mês)</div>
+                <div class="card-body">
+                    <canvas id="chartMensal"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Recebendo os dados do Python
+    const labels = {{ labels | tojson }};
+    const dadosProdAcum = {{ prod_acum | tojson }};
+    const dadosGastoAcum = {{ gasto_acum | tojson }};
+    const dadosProdMes = {{ prod_mes | tojson }};
+    const dadosGastoMes = {{ gasto_mes | tojson }};
+
+    // 1. Gráfico Curva S (Linha)
+    new Chart(document.getElementById('chartCurvaS'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Produção Acumulada (Ganho)',
+                    data: dadosProdAcum,
+                    borderColor: 'blue',
+                    backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: 'Gasto Acumulado (Real)',
+                    data: dadosGastoAcum,
+                    borderColor: 'red',
+                    backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        },
+        options: { responsive: true }
+    });
+
+    // 2. Gráfico Mensal (Barras)
+    new Chart(document.getElementById('chartMensal'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Produção no Mês',
+                    data: dadosProdMes,
+                    backgroundColor: 'blue'
+                },
+                {
+                    label: 'Gasto no Mês',
+                    data: dadosGastoMes,
+                    backgroundColor: 'red'
+                }
+            ]
+        },
+        options: { responsive: true }
+    });
+</script>
+
+</body>
+</html>
